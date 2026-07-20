@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "Bill Calculator",
+    "slug": "bill-calculator",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "light",
+    "scheme": "billcalculator",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.jet.billcalculator"
+    },
+    "android": {
+      "package": "com.jet.billcalculator"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "09ca93da-74ed-4f71-8dab-b3391ed2a8f0"
+      }
+    }
+  }
+}
