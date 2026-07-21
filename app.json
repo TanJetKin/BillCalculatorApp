@@ -16,6 +16,21 @@
     "android": {
       "package": "com.jet.billcalculator"
     },
+    "web": {
+      "name": "Bill Calculator",
+      "shortName": "Bills",
+      "description": "Offline bill splitting calculator with saved history and preset groups.",
+      "display": "standalone",
+      "startUrl": ".",
+      "scope": ".",
+      "orientation": "portrait",
+      "themeColor": "#0f766e",
+      "backgroundColor": "#f8fafc",
+      "favicon": "./public/icon.svg"
+    },
+    "experiments": {
+      "baseUrl": "/BillCalculatorApp"
+    },
     "extra": {
       "eas": {
         "projectId": "09ca93da-74ed-4f71-8dab-b3391ed2a8f0"

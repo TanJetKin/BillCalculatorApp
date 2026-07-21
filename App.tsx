@@ -633,6 +633,76 @@ const formatHistoryDate = (value: string) => {
   });
 };
 
+type WebServiceWorkerRegistration = {
+  active?: { postMessage: (message: unknown) => void } | null;
+};
+
+type WebServiceWorkerContainer = {
+  register: (scriptUrl: string) => Promise<WebServiceWorkerRegistration>;
+  ready?: Promise<WebServiceWorkerRegistration>;
+};
+
+type WebRuntime = typeof globalThis & {
+  navigator?: {
+    serviceWorker?: WebServiceWorkerContainer;
+  };
+  location?: {
+    href: string;
+    origin: string;
+  };
+  performance?: {
+    getEntriesByType: (entryType: string) => Array<{ name?: string }>;
+  };
+};
+
+const serviceWorkerUrlFromPage = (href: string) => {
+  const cleanHref = href.split("#")[0].split("?")[0];
+  const folderEnd = cleanHref.endsWith("/")
+    ? cleanHref.length
+    : cleanHref.lastIndexOf("/") + 1;
+
+  return `${cleanHref.slice(0, folderEnd)}sw.js`;
+};
+
+const registerPwaServiceWorker = () => {
+  if (Platform.OS !== "web" || __DEV__) {
+    return;
+  }
+
+  const webRuntime = globalThis as WebRuntime;
+  const serviceWorker = webRuntime.navigator?.serviceWorker;
+  const pageLocation = webRuntime.location;
+
+  if (!serviceWorker || !pageLocation) {
+    return;
+  }
+
+  serviceWorker
+    .register(serviceWorkerUrlFromPage(pageLocation.href))
+    .then((registration) =>
+      (serviceWorker.ready ?? Promise.resolve(registration)).then(
+        (readyRegistration) => {
+          setTimeout(() => {
+            const resourceUrls =
+              webRuntime.performance
+                ?.getEntriesByType("resource")
+                .map((entry) => entry.name)
+                .filter(
+                  (url): url is string =>
+                    Boolean(url) && url.startsWith(pageLocation.origin)
+                ) ?? [];
+
+            readyRegistration.active?.postMessage({
+              type: "CACHE_APP_SHELL",
+              urls: Array.from(new Set([pageLocation.href, ...resourceUrls]))
+            });
+          }, 1200);
+        }
+      )
+    )
+    .catch(() => undefined);
+};
+
 export default function App() {
   const [screen, setScreen] = useState<AppScreen>("home");
   const [bill, setBill] = useState<BillState>(() => createNewBill());
@@ -665,6 +735,10 @@ export default function App() {
 
   const payer =
     bill.people.find((person) => person.id === bill.payerId) ?? bill.people[0];
+
+  useEffect(() => {
+    registerPwaServiceWorker();
+  }, []);
 
   useEffect(() => {
     let mounted = true;
