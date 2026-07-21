@@ -26,7 +26,7 @@
       "orientation": "portrait",
       "themeColor": "#0f766e",
       "backgroundColor": "#f8fafc",
-      "favicon": "./public/icon.svg"
+      "favicon": "./public/icon.png"
     },
     "experiments": {
       "baseUrl": "/BillCalculatorApp"

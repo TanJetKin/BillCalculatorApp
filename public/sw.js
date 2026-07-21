@@ -2,7 +2,7 @@ const CACHE_PREFIX = "bill-calculator";
 const APP_CACHE = `${CACHE_PREFIX}-app-v1`;
 const RUNTIME_CACHE = `${CACHE_PREFIX}-runtime-v1`;
 const EXPECTED_CACHES = [APP_CACHE, RUNTIME_CACHE];
-const APP_SHELL = ["./", "./manifest.json", "./icon.svg"];
+const APP_SHELL = ["./", "./manifest.json", "./icon.svg", "./icon.png"];
 
 const sameOriginUrl = (url) => {
   try {
