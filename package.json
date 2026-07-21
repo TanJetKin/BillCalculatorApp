@@ -10,7 +10,7 @@
     "web": "expo start --web",
     "build:web": "expo export -p web",
     "predeploy": "expo export -p web",
-    "deploy": "npx gh-pages --nojekyll -d dist",
+    "deploy": "npx -y gh-pages --nojekyll -d dist",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
