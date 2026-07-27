@@ -539,7 +539,6 @@ const getBillTitle = (bill: BillState, fallback: string) =>
 const buildPaymentSummaryText = (bill: BillState, totals: Totals) => {
   const payerLabel = getPayerLabel(bill);
   const title = getBillTitle(bill, "Bill");
-  const receiptTotals = receiptTotalsFor(bill.people, totals);
   const paymentLines =
     bill.people.length === 0
       ? ["No people added."]
@@ -555,15 +554,6 @@ const buildPaymentSummaryText = (bill: BillState, totals: Totals) => {
     `Everything: ${formatMoney(totals.grandTotal)}`,
     `Amount of People: ${bill.people.length}`,
     `Payer: ${payerLabel}`,
-    "",
-    "Receipt totals:",
-    `Personal Total: ${formatMoney(receiptTotals.personal)}`,
-    `Split Amount Total: ${formatMoney(receiptTotals.splitAmount)}`,
-    `Gross Amount: ${formatMoney(receiptTotals.gross)}`,
-    `Total Tax: ${formatMoney(receiptTotals.tax)}`,
-    `Total Discount: ${formatDiscountMoney(receiptTotals.discount)}`,
-    `Extra Add-ons: ${formatMoney(receiptTotals.addOns)}`,
-    `Net Amount: ${formatMoney(receiptTotals.net)}`,
     "",
     "Who pays who:",
     ...paymentLines
