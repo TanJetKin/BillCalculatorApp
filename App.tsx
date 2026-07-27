@@ -244,6 +244,8 @@ const parseWholeShare = (value: string | undefined) =>
   Math.max(0, Math.floor(parseAmount(value)));
 
 const formatMoney = (value: number) => `${currencyLabel} ${value.toFixed(2)}`;
+const formatDiscountMoney = (value: number) =>
+  Math.abs(value) < 0.005 ? formatMoney(0) : `-${formatMoney(value)}`;
 const formatCell = (value: number) =>
   Math.abs(value) < 0.005 ? "0.00" : value.toFixed(2);
 
@@ -281,6 +283,28 @@ const emptyStringValues = (people: Person[]) =>
 
 const sumValues = (people: Person[], values: Record<string, number>) =>
   people.reduce((sum, person) => sum + (values[person.id] ?? 0), 0);
+
+const discountValuesFor = (people: Person[], totals: Totals) =>
+  people.reduce<Record<string, number>>((acc, person) => {
+    acc[person.id] =
+      totals.staticDiscount[person.id] + totals.fairDiscount[person.id];
+    return acc;
+  }, {});
+
+const receiptTotalsFor = (people: Person[], totals: Totals) => {
+  const totalStaticDiscount = sumValues(people, totals.staticDiscount);
+  const totalFairDiscount = sumValues(people, totals.fairDiscount);
+
+  return {
+    personal: sumValues(people, totals.personal),
+    splitAmount: sumValues(people, totals.splitTotal),
+    gross: sumValues(people, totals.gross),
+    tax: sumValues(people, totals.tax),
+    discount: totalStaticDiscount + totalFairDiscount,
+    addOns: sumValues(people, totals.addOn),
+    net: sumValues(people, totals.net)
+  };
+};
 
 const createEvenSplit = (index: number): AmountRow => ({
   id: id("even"),
@@ -515,6 +539,7 @@ const getBillTitle = (bill: BillState, fallback: string) =>
 const buildPaymentSummaryText = (bill: BillState, totals: Totals) => {
   const payerLabel = getPayerLabel(bill);
   const title = getBillTitle(bill, "Bill");
+  const receiptTotals = receiptTotalsFor(bill.people, totals);
   const paymentLines =
     bill.people.length === 0
       ? ["No people added."]
@@ -530,6 +555,15 @@ const buildPaymentSummaryText = (bill: BillState, totals: Totals) => {
     `Everything: ${formatMoney(totals.grandTotal)}`,
     `Amount of People: ${bill.people.length}`,
     `Payer: ${payerLabel}`,
+    "",
+    "Receipt totals:",
+    `Personal Total: ${formatMoney(receiptTotals.personal)}`,
+    `Split Amount Total: ${formatMoney(receiptTotals.splitAmount)}`,
+    `Gross Amount: ${formatMoney(receiptTotals.gross)}`,
+    `Total Tax: ${formatMoney(receiptTotals.tax)}`,
+    `Total Discount: ${formatDiscountMoney(receiptTotals.discount)}`,
+    `Extra Add-ons: ${formatMoney(receiptTotals.addOns)}`,
+    `Net Amount: ${formatMoney(receiptTotals.net)}`,
     "",
     "Who pays who:",
     ...paymentLines
@@ -740,6 +774,36 @@ export default function App() {
     () => buildPaymentSummaryText(bill, totals),
     [bill, totals]
   );
+  const discountValues = useMemo(
+    () => discountValuesFor(bill.people, totals),
+    [bill.people, totals]
+  );
+  const receiptTotals = useMemo(
+    () => receiptTotalsFor(bill.people, totals),
+    [bill.people, totals]
+  );
+  const receiptTotalRows: Array<{
+    label: string;
+    value: string;
+    isDiscount?: boolean;
+    strong?: boolean;
+  }> = [
+    { label: "Personal total", value: formatMoney(receiptTotals.personal) },
+    { label: "Split amount total", value: formatMoney(receiptTotals.splitAmount) },
+    { label: "Gross amount", value: formatMoney(receiptTotals.gross) },
+    { label: "Total tax", value: formatMoney(receiptTotals.tax) },
+    {
+      label: "Total discount",
+      value: formatDiscountMoney(receiptTotals.discount),
+      isDiscount: true
+    },
+    { label: "Extra add-ons", value: formatMoney(receiptTotals.addOns) },
+    {
+      label: "Net amount",
+      value: formatMoney(receiptTotals.net),
+      strong: true
+    }
+  ];
   const animatedScreenStyle = useMemo(
     () =>
       Platform.OS === "web"
@@ -2022,15 +2086,7 @@ export default function App() {
               <SummaryStrip
                 title="Discounts"
                 people={bill.people}
-                values={bill.people.reduce<Record<string, number>>(
-                  (acc, person) => {
-                    acc[person.id] =
-                      totals.staticDiscount[person.id] +
-                      totals.fairDiscount[person.id];
-                    return acc;
-                  },
-                  {}
-                )}
+                values={discountValues}
                 isDiscount
               />
               <SummaryStrip
@@ -2044,6 +2100,30 @@ export default function App() {
                 values={totals.net}
                 strong
               />
+
+              <View style={styles.receiptTotalsList}>
+                {receiptTotalRows.map((row, index) => (
+                  <View
+                    key={row.label}
+                    style={[
+                      styles.receiptTotalRow,
+                      index === receiptTotalRows.length - 1 &&
+                        styles.receiptTotalRowLast
+                    ]}
+                  >
+                    <Text style={styles.receiptTotalLabel}>{row.label}</Text>
+                    <Text
+                      style={[
+                        styles.receiptTotalValue,
+                        row.isDiscount && styles.receiptTotalValueDiscount,
+                        row.strong && styles.receiptTotalValueStrong
+                      ]}
+                    >
+                      {row.value}
+                    </Text>
+                  </View>
+                ))}
+              </View>
 
               <View style={styles.tallyGrid}>
                 <View style={styles.tallyItem}>
@@ -2924,6 +3004,50 @@ const styles = StyleSheet.create({
     fontSize: 13,
     lineHeight: 20,
     fontWeight: "700"
+  },
+  receiptTotalsList: {
+    width: "100%",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#d9e2ec",
+    backgroundColor: "#ffffff",
+    overflow: "hidden"
+  },
+  receiptTotalRow: {
+    minHeight: 42,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e2e8f0"
+  },
+  receiptTotalRowLast: {
+    borderBottomWidth: 0
+  },
+  receiptTotalLabel: {
+    flex: 1,
+    minWidth: 0,
+    color: "#475569",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "800"
+  },
+  receiptTotalValue: {
+    color: "#0f172a",
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "900",
+    flexShrink: 0,
+    textAlign: "right"
+  },
+  receiptTotalValueDiscount: {
+    color: "#be123c"
+  },
+  receiptTotalValueStrong: {
+    color: "#0f766e"
   },
   tallyGrid: {
     flexDirection: "row",
