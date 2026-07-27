@@ -741,9 +741,12 @@ export default function App() {
     [bill, totals]
   );
   const animatedScreenStyle = useMemo(
-    () => ({
-      transform: [{ translateX: transitionX }]
-    }),
+    () =>
+      Platform.OS === "web"
+        ? undefined
+        : {
+            transform: [{ translateX: transitionX }]
+          },
     [transitionX]
   );
 
@@ -881,6 +884,13 @@ export default function App() {
 
   const slideToScreen = (nextScreen: AppScreen) => {
     transitionX.stopAnimation();
+
+    if (Platform.OS === "web") {
+      transitionX.setValue(0);
+      setScreen(nextScreen);
+      return;
+    }
+
     transitionX.setValue(72);
     setScreen(nextScreen);
     Animated.timing(transitionX, {
@@ -923,16 +933,27 @@ export default function App() {
     }
 
     transitionX.stopAnimation();
+
+    const finishBackToHome = () => {
+      setNewBillNameInput("");
+      setSelectedHistoryIds([]);
+      setSettlementText("");
+      setScreen("home");
+    };
+
+    if (Platform.OS === "web") {
+      transitionX.setValue(0);
+      finishBackToHome();
+      return;
+    }
+
     Animated.timing(transitionX, {
       toValue: 88,
       duration: 170,
       useNativeDriver: true
     }).start(() => {
       transitionX.setValue(-42);
-      setNewBillNameInput("");
-      setSelectedHistoryIds([]);
-      setSettlementText("");
-      setScreen("home");
+      finishBackToHome();
       Animated.timing(transitionX, {
         toValue: 0,
         duration: 160,
