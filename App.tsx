@@ -14,6 +14,7 @@ import {
   StyleSheet,
   Text,
   TextInput,
+  useWindowDimensions,
   View
 } from "react-native";
 
@@ -102,7 +103,7 @@ type PersonGroup = {
 };
 
 const currencyLabel = "RM";
-const cellWidth = 112;
+const maxCellWidth = 112;
 const historyStorageKey = "bill-calculator-history-v1";
 const groupsStorageKey = "bill-calculator-groups-v1";
 
@@ -253,6 +254,17 @@ const removeRecordKey = (record: Record<string, string>, key: string) => {
   const copy = { ...record };
   delete copy[key];
   return copy;
+};
+
+const responsiveCellWidthFor = (screenWidth: number) =>
+  Math.max(92, Math.min(maxCellWidth, Math.floor((screenWidth - 56) / 3)));
+
+const responsivePersonEditorWidthFor = (screenWidth: number) =>
+  Math.max(142, Math.min(164, Math.floor((screenWidth - 54) / 2)));
+
+const useResponsiveCellWidth = () => {
+  const { width } = useWindowDimensions();
+  return responsiveCellWidthFor(width);
 };
 
 const emptyValues = (people: Person[]) =>
@@ -703,6 +715,7 @@ const registerPwaServiceWorker = () => {
 };
 
 export default function App() {
+  const { width: screenWidth } = useWindowDimensions();
   const [screen, setScreen] = useState<AppScreen>("home");
   const [bill, setBill] = useState<BillState>(() => createNewBill());
   const [history, setHistory] = useState<HistoryEntry[]>([]);
@@ -720,6 +733,8 @@ export default function App() {
   const peopleScrollRef = useRef<ScrollView>(null);
   const previousPeopleCountRef = useRef(bill.people.length);
   const transitionX = useRef(new Animated.Value(0)).current;
+  const responsiveCellWidth = responsiveCellWidthFor(screenWidth);
+  const responsivePersonEditorWidth = responsivePersonEditorWidthFor(screenWidth);
   const totals = useMemo(() => computeTotals(bill), [bill]);
   const summaryText = useMemo(
     () => buildPaymentSummaryText(bill, totals),
@@ -1667,7 +1682,13 @@ export default function App() {
                 >
                   <View style={styles.personList}>
                     {bill.people.map((person, index) => (
-                      <View key={person.id} style={styles.personEditor}>
+                      <View
+                        key={person.id}
+                        style={[
+                          styles.personEditor,
+                          { width: responsivePersonEditorWidth }
+                        ]}
+                      >
                         <Text style={styles.inputLabel}>Name</Text>
                         <TextInput
                           value={person.name}
@@ -1761,8 +1782,14 @@ export default function App() {
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View style={styles.strip}>
                           {bill.people.map((person, index) => (
-                            <View key={person.id} style={styles.cell}>
-                              <Text style={styles.cellName}>
+                            <View
+                              key={person.id}
+                              style={[
+                                styles.cell,
+                                { width: responsiveCellWidth }
+                              ]}
+                            >
+                              <Text numberOfLines={1} style={styles.cellName}>
                                 {personName(person, index)}
                               </Text>
                               <TextInput
@@ -1922,8 +1949,14 @@ export default function App() {
                       <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                         <View style={styles.strip}>
                           {bill.people.map((person, index) => (
-                            <View key={person.id} style={styles.cell}>
-                              <Text style={styles.cellName}>
+                            <View
+                              key={person.id}
+                              style={[
+                                styles.cell,
+                                { width: responsiveCellWidth }
+                              ]}
+                            >
+                              <Text numberOfLines={1} style={styles.cellName}>
                                 {personName(person, index)}
                               </Text>
                               <TextInput
@@ -2259,12 +2292,19 @@ function PersonValueStrip({
   values,
   isDiscount = false
 }: PersonValueStripProps) {
+  const responsiveCellWidth = useResponsiveCellWidth();
+
   return (
     <ScrollView horizontal showsHorizontalScrollIndicator={false}>
       <View style={styles.strip}>
         {people.map((person, index) => (
-          <View key={person.id} style={styles.valueCell}>
-            <Text style={styles.cellName}>{personName(person, index)}</Text>
+          <View
+            key={person.id}
+            style={[styles.valueCell, { width: responsiveCellWidth }]}
+          >
+            <Text numberOfLines={1} style={styles.cellName}>
+              {personName(person, index)}
+            </Text>
             <Text
               style={[
                 styles.cellValue,
@@ -2298,6 +2338,8 @@ function SummaryStrip({
   strong = false,
   isDiscount = false
 }: SummaryStripProps) {
+  const responsiveCellWidth = useResponsiveCellWidth();
+
   return (
     <View style={styles.summaryBlock}>
       <Text style={styles.summaryTitle}>{title}</Text>
@@ -2306,9 +2348,15 @@ function SummaryStrip({
           {people.map((person, index) => (
             <View
               key={person.id}
-              style={[styles.valueCell, strong && styles.netCell]}
+              style={[
+                styles.valueCell,
+                { width: responsiveCellWidth },
+                strong && styles.netCell
+              ]}
             >
-              <Text style={styles.cellName}>{personName(person, index)}</Text>
+              <Text numberOfLines={1} style={styles.cellName}>
+                {personName(person, index)}
+              </Text>
               <Text
                 style={[
                   styles.cellValue,
@@ -2340,15 +2388,19 @@ function EmptyState({ label }: { label: string }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    width: "100%",
     backgroundColor: "#f8fafc"
   },
   keyboardArea: {
     flex: 1
   },
   screenShell: {
-    flex: 1
+    flex: 1,
+    width: "100%"
   },
   content: {
+    flexGrow: 1,
+    width: "100%",
     padding: 16,
     paddingBottom: 40,
     gap: 14
@@ -2400,9 +2452,10 @@ const styles = StyleSheet.create({
     textTransform: "uppercase"
   },
   title: {
+    flexShrink: 1,
     color: "#0f172a",
-    fontSize: 31,
-    lineHeight: 38,
+    fontSize: 29,
+    lineHeight: 35,
     fontWeight: "800"
   },
   primaryButton: {
@@ -2411,6 +2464,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     alignItems: "center",
     justifyContent: "center",
+    alignSelf: "stretch",
     backgroundColor: "#0f766e"
   },
   primaryButtonText: {
@@ -2426,6 +2480,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 1,
     backgroundColor: "#ffffff"
   },
   outlineButtonText: {
@@ -2441,6 +2496,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 1,
     backgroundColor: "#fff1f2"
   },
   dangerButtonText: {
@@ -2451,12 +2507,14 @@ const styles = StyleSheet.create({
   actionRow: {
     flexDirection: "row",
     flexWrap: "wrap",
-    gap: 8
+    gap: 8,
+    width: "100%"
   },
   formStack: {
     gap: 10
   },
   section: {
+    width: "100%",
     backgroundColor: "#ffffff",
     borderRadius: 8,
     borderWidth: 1,
@@ -2468,9 +2526,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     gap: 12
   },
   sectionTitle: {
+    flex: 1,
+    minWidth: 0,
     color: "#0f172a",
     fontSize: 18,
     lineHeight: 23,
@@ -2482,6 +2543,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     alignItems: "center",
     justifyContent: "center",
+    flexShrink: 0,
     backgroundColor: "#ccfbf1"
   },
   addButtonText: {
@@ -2498,7 +2560,9 @@ const styles = StyleSheet.create({
     gap: 8
   },
   groupShortcut: {
-    minWidth: 128,
+    minWidth: 138,
+    flexGrow: 1,
+    flexBasis: 138,
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#99f6e4",
@@ -2522,6 +2586,7 @@ const styles = StyleSheet.create({
     gap: 10
   },
   savedGroupItem: {
+    width: "100%",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#d9e2ec",
@@ -2530,6 +2595,7 @@ const styles = StyleSheet.create({
     gap: 10
   },
   historyItem: {
+    width: "100%",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#d9e2ec",
@@ -2564,11 +2630,14 @@ const styles = StyleSheet.create({
   },
   historyHeader: {
     flexDirection: "row",
+    alignItems: "flex-start",
     justifyContent: "space-between",
+    flexWrap: "wrap",
     gap: 10
   },
   historyTitleBlock: {
     flex: 1,
+    minWidth: 0,
     gap: 4
   },
   historyTitle: {
@@ -2587,7 +2656,9 @@ const styles = StyleSheet.create({
     color: "#0f766e",
     fontSize: 15,
     lineHeight: 20,
-    fontWeight: "900"
+    fontWeight: "900",
+    flexShrink: 0,
+    textAlign: "right"
   },
   historySummary: {
     color: "#334155",
@@ -2596,6 +2667,7 @@ const styles = StyleSheet.create({
     fontWeight: "600"
   },
   billNameInput: {
+    width: "100%",
     minHeight: 50,
     borderRadius: 8,
     borderWidth: 1,
@@ -2626,6 +2698,7 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   nameInput: {
+    minWidth: 0,
     minHeight: 42,
     borderRadius: 8,
     borderWidth: 1,
@@ -2637,6 +2710,7 @@ const styles = StyleSheet.create({
     fontWeight: "700"
   },
   multilineInput: {
+    minWidth: 0,
     minHeight: 82,
     borderRadius: 8,
     borderWidth: 1,
@@ -2650,6 +2724,7 @@ const styles = StyleSheet.create({
     textAlignVertical: "top"
   },
   amountInputWrap: {
+    minWidth: 0,
     minHeight: 42,
     flexDirection: "row",
     alignItems: "center",
@@ -2661,6 +2736,7 @@ const styles = StyleSheet.create({
   },
   amountInput: {
     flex: 1,
+    minWidth: 0,
     color: "#0f172a",
     fontSize: 16,
     fontWeight: "700",
@@ -2702,10 +2778,12 @@ const styles = StyleSheet.create({
   rowHeader: {
     flexDirection: "row",
     alignItems: "center",
+    width: "100%",
     gap: 8
   },
   labelInput: {
     flex: 1,
+    minWidth: 0,
     minHeight: 40,
     borderRadius: 8,
     borderWidth: 1,
@@ -2732,10 +2810,12 @@ const styles = StyleSheet.create({
   },
   compactFields: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10
   },
   compactField: {
     flex: 1,
+    minWidth: 120,
     gap: 6
   },
   stripLabel: {
@@ -2749,7 +2829,7 @@ const styles = StyleSheet.create({
     gap: 8
   },
   cell: {
-    width: cellWidth,
+    width: maxCellWidth,
     minHeight: 74,
     borderRadius: 8,
     borderWidth: 1,
@@ -2759,7 +2839,7 @@ const styles = StyleSheet.create({
     gap: 6
   },
   valueCell: {
-    width: cellWidth,
+    width: maxCellWidth,
     minHeight: 64,
     borderRadius: 8,
     borderWidth: 1,
@@ -2775,9 +2855,11 @@ const styles = StyleSheet.create({
   cellName: {
     color: "#64748b",
     fontSize: 12,
+    lineHeight: 16,
     fontWeight: "800"
   },
   cellInput: {
+    minWidth: 0,
     minHeight: 36,
     borderRadius: 8,
     borderWidth: 1,
@@ -2790,8 +2872,8 @@ const styles = StyleSheet.create({
   },
   cellValue: {
     color: "#0f172a",
-    fontSize: 18,
-    lineHeight: 23,
+    fontSize: 17,
+    lineHeight: 22,
     fontWeight: "900"
   },
   netValue: {
@@ -2809,6 +2891,7 @@ const styles = StyleSheet.create({
     fontWeight: "800"
   },
   summaryTextBox: {
+    width: "100%",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#d9e2ec",
@@ -2823,10 +2906,12 @@ const styles = StyleSheet.create({
   },
   tallyGrid: {
     flexDirection: "row",
+    flexWrap: "wrap",
     gap: 10
   },
   tallyItem: {
     flex: 1,
+    minWidth: 132,
     minHeight: 78,
     borderRadius: 8,
     backgroundColor: "#0f172a",
@@ -2889,6 +2974,7 @@ const styles = StyleSheet.create({
   },
   paymentText: {
     flex: 1,
+    minWidth: 0,
     color: "#0f172a",
     fontSize: 14,
     fontWeight: "700"
@@ -2896,7 +2982,8 @@ const styles = StyleSheet.create({
   paymentAmount: {
     color: "#0f766e",
     fontSize: 14,
-    fontWeight: "900"
+    fontWeight: "900",
+    flexShrink: 0
   },
   emptyState: {
     minHeight: 58,
