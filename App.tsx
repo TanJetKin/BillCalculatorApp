@@ -6,7 +6,6 @@ import {
   Animated,
   BackHandler,
   KeyboardAvoidingView,
-  PanResponder,
   Platform,
   Pressable,
   SafeAreaView,
@@ -966,40 +965,6 @@ export default function App() {
     return () => subscription.remove();
   }, [bill, historyLoaded, screen, selectedHistoryIds.length, settlementText]);
 
-  const backSwipeResponder = useMemo(
-    () =>
-      PanResponder.create({
-        onMoveShouldSetPanResponder: (_event, gestureState) =>
-          screen !== "home" &&
-          gestureState.x0 < 28 &&
-          gestureState.dx > 18 &&
-          Math.abs(gestureState.dy) < 24,
-        onPanResponderMove: (_event, gestureState) => {
-          transitionX.setValue(Math.max(0, gestureState.dx));
-        },
-        onPanResponderRelease: (_event, gestureState) => {
-          if (gestureState.dx > 70 && Math.abs(gestureState.dy) < 70) {
-            backToHome();
-            return;
-          }
-
-          Animated.timing(transitionX, {
-            toValue: 0,
-            duration: 150,
-            useNativeDriver: true
-          }).start();
-        },
-        onPanResponderTerminate: () => {
-          Animated.timing(transitionX, {
-            toValue: 0,
-            duration: 150,
-            useNativeDriver: true
-          }).start();
-        }
-      }),
-    [backToHome, screen, transitionX]
-  );
-
   const copyText = async (text: string) => {
     try {
       await Clipboard.setStringAsync(text);
@@ -1499,7 +1464,7 @@ export default function App() {
 
   if (screen === "newBill") {
     return (
-      <SafeAreaView style={styles.safeArea} {...backSwipeResponder.panHandlers}>
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" />
         <Animated.View style={[styles.screenShell, animatedScreenStyle]}>
           <ScrollView
@@ -1565,7 +1530,7 @@ export default function App() {
 
   if (screen === "groups") {
     return (
-      <SafeAreaView style={styles.safeArea} {...backSwipeResponder.panHandlers}>
+      <SafeAreaView style={styles.safeArea}>
         <StatusBar barStyle="dark-content" />
         <Animated.View style={[styles.screenShell, animatedScreenStyle]}>
           <ScrollView
@@ -1653,7 +1618,7 @@ export default function App() {
   }
 
   return (
-    <SafeAreaView style={styles.safeArea} {...backSwipeResponder.panHandlers}>
+    <SafeAreaView style={styles.safeArea}>
       <StatusBar barStyle="dark-content" />
       <KeyboardAvoidingView
         behavior={Platform.OS === "ios" ? "padding" : undefined}
