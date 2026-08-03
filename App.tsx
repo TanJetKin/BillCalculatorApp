@@ -59,6 +59,7 @@ type BillState = {
   fairDiscounts: PercentRow[];
   addOns: AddOnRow[];
   payerId: string;
+  paidPersonIds?: string[];
 };
 
 type AppScreen = "home" | "newBill" | "groups" | "bill";
@@ -372,7 +373,8 @@ const createNewBill = (names: string[] = [], billName = ""): BillState => {
     staticDiscounts: [],
     fairDiscounts: [],
     addOns: [],
-    payerId: people[0]?.id ?? ""
+    payerId: people[0]?.id ?? "",
+    paidPersonIds: []
   };
 };
 
@@ -523,9 +525,15 @@ const parseGroupPeople = (value: string) =>
     .map((name) => name.trim())
     .filter(Boolean);
 
+const getPayerId = (bill: BillState) =>
+  bill.people.some((person) => person.id === bill.payerId)
+    ? bill.payerId
+    : bill.people[0]?.id ?? "";
+
 const getPayerLabel = (bill: BillState) => {
+  const payerId = getPayerId(bill);
   const payerIndex = bill.people.findIndex(
-    (person) => person.id === bill.payerId
+    (person) => person.id === payerId
   );
   const index = payerIndex >= 0 ? payerIndex : 0;
   const payer = bill.people[index];
@@ -533,19 +541,34 @@ const getPayerLabel = (bill: BillState) => {
   return payer ? personName(payer, index) : "Payer";
 };
 
+const paidPersonIdsFor = (bill: BillState) => {
+  const payerId = getPayerId(bill);
+  const uniquePaidIds = new Set(bill.paidPersonIds ?? []);
+
+  return bill.people
+    .map((person) => person.id)
+    .filter((personId) => personId !== payerId && uniquePaidIds.has(personId));
+};
+
+const isPersonPaidToPayer = (bill: BillState, personId: string) =>
+  paidPersonIdsFor(bill).includes(personId);
+
 const getBillTitle = (bill: BillState, fallback: string) =>
   bill.billName?.trim() || fallback;
 
 const buildPaymentSummaryText = (bill: BillState, totals: Totals) => {
   const payerLabel = getPayerLabel(bill);
   const title = getBillTitle(bill, "Bill");
+  const paidPersonIds = new Set(paidPersonIdsFor(bill));
   const paymentLines =
     bill.people.length === 0
       ? ["No people added."]
       : bill.people.map((person, index) => {
+        const paidLabel = paidPersonIds.has(person.id) ? " (paid)" : "";
+
         return `${personName(person, index)} -> ${payerLabel} ${formatMoney(
           totals.net[person.id] ?? 0
-        )}`;
+        )}${paidLabel}`;
       });
 
   return [
@@ -580,6 +603,7 @@ const createHistoryEntry = (bill: BillState, entryId?: string): HistoryEntry => 
 };
 
 const calculateLeastTransfer = (entries: HistoryEntry[]) => {
+  const paidTransferLines: string[] = [];
   const balances = entries.reduce<Record<string, number>>((acc, entry) => {
     const billTotals = computeTotals(entry.bill);
     const payerLabel = getPayerLabel(entry.bill);
@@ -587,8 +611,16 @@ const calculateLeastTransfer = (entries: HistoryEntry[]) => {
     entry.bill.people.forEach((person, index) => {
       const from = personName(person, index);
       const amount = Number((billTotals.net[person.id] ?? 0).toFixed(2));
+      const paid = isPersonPaidToPayer(entry.bill, person.id);
 
-      if (amount < 0.01 || from === payerLabel) {
+      if (amount < 0.01 || person.id === getPayerId(entry.bill)) {
+        return;
+      }
+
+      if (paid) {
+        paidTransferLines.push(
+          `${from} -> ${payerLabel}: ${formatMoney(amount)} (paid)`
+        );
         return;
       }
 
@@ -647,6 +679,9 @@ const calculateLeastTransfer = (entries: HistoryEntry[]) => {
     "",
     "Net balances:",
     ...(balanceLines.length > 0 ? balanceLines : ["No balances."]),
+    ...(paidTransferLines.length > 0
+      ? ["", "Already paid:", ...paidTransferLines]
+      : []),
     "",
     "Settlement:",
     ...(transactions.length > 0 ? transactions : ["Already settled."])
@@ -1187,15 +1222,24 @@ export default function App() {
         return current;
       }
 
+      const currentPayerId = getPayerId(current);
       const people = current.people.filter((person) => person.id !== personId);
-      const payerId = people.some((person) => person.id === current.payerId)
-        ? current.payerId
+      const payerId = people.some((person) => person.id === currentPayerId)
+        ? currentPayerId
         : people[0]?.id ?? "";
+      const payerChanged = payerId !== currentPayerId;
+      const peopleIds = new Set(people.map((person) => person.id));
 
       return {
         ...current,
         people,
         payerId,
+        paidPersonIds: payerChanged
+          ? []
+          : paidPersonIdsFor(current).filter(
+              (paidPersonId) =>
+                paidPersonId !== personId && peopleIds.has(paidPersonId)
+            ),
         specificSplits: current.specificSplits.map((row) => ({
           ...row,
           shares: removeRecordKey(row.shares, personId)
@@ -1215,6 +1259,38 @@ export default function App() {
         person.id === personId ? { ...person, ...patch } : person
       )
     }));
+  };
+
+  const updatePayer = (personId: string) => {
+    setBill((current) => ({
+      ...current,
+      payerId: personId,
+      paidPersonIds:
+        getPayerId(current) === personId ? paidPersonIdsFor(current) : []
+    }));
+  };
+
+  const togglePaidPerson = (personId: string) => {
+    setBill((current) => {
+      if (personId === getPayerId(current)) {
+        return current;
+      }
+
+      const paidSet = new Set(paidPersonIdsFor(current));
+
+      if (paidSet.has(personId)) {
+        paidSet.delete(personId);
+      } else {
+        paidSet.add(personId);
+      }
+
+      return {
+        ...current,
+        paidPersonIds: current.people
+          .map((person) => person.id)
+          .filter((currentPersonId) => paidSet.has(currentPersonId))
+      };
+    });
   };
 
   const addEvenSplit = () => {
@@ -2137,16 +2213,11 @@ export default function App() {
                   <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                     <View style={styles.payerList}>
                       {bill.people.map((person, index) => {
-                        const selected = person.id === bill.payerId;
+                        const selected = person.id === getPayerId(bill);
                         return (
                           <Pressable
                             key={person.id}
-                            onPress={() =>
-                              setBill((current) => ({
-                                ...current,
-                                payerId: person.id
-                              }))
-                            }
+                            onPress={() => updatePayer(person.id)}
                             style={[
                               styles.payerChip,
                               selected && styles.payerChipSelected
@@ -2174,14 +2245,49 @@ export default function App() {
                           bill.people.findIndex((item) => item.id === payer.id)
                         )
                         : "Payer";
+                      const isPayer = person.id === getPayerId(bill);
+                      const paid = isPersonPaidToPayer(bill, person.id);
                       return (
                         <View key={person.id} style={styles.paymentRow}>
-                          <Text style={styles.paymentText}>
-                            {personName(person, index)} -&gt; {payerLabel}
-                          </Text>
+                          <View style={styles.paymentTextBlock}>
+                            <Text style={styles.paymentText}>
+                              {personName(person, index)} -&gt; {payerLabel}
+                            </Text>
+                            <Text
+                              style={[
+                                styles.paymentStatusText,
+                                paid && styles.paymentStatusTextPaid
+                              ]}
+                            >
+                              {isPayer ? "Payer" : paid ? "Paid" : "Pending"}
+                            </Text>
+                          </View>
                           <Text style={styles.paymentAmount}>
                             {formatMoney(totals.net[person.id] ?? 0)}
                           </Text>
+                          <Pressable
+                            accessibilityLabel={`${personName(
+                              person,
+                              index
+                            )} paid ${payerLabel}`}
+                            accessibilityRole="checkbox"
+                            accessibilityState={{
+                              checked: paid,
+                              disabled: isPayer
+                            }}
+                            disabled={isPayer}
+                            hitSlop={6}
+                            onPress={() => togglePaidPerson(person.id)}
+                            style={[
+                              styles.paidCheckbox,
+                              paid && styles.paidCheckboxChecked,
+                              isPayer && styles.paidCheckboxDisabled
+                            ]}
+                          >
+                            {paid ? (
+                              <View style={styles.paidCheckboxMark} />
+                            ) : null}
+                          </Pressable>
                         </View>
                       );
                     })}
@@ -3107,18 +3213,60 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: "#e2e8f0"
   },
-  paymentText: {
+  paymentTextBlock: {
     flex: 1,
     minWidth: 0,
+    gap: 3
+  },
+  paymentText: {
     color: "#0f172a",
     fontSize: 14,
     fontWeight: "700"
+  },
+  paymentStatusText: {
+    color: "#64748b",
+    fontSize: 11,
+    fontWeight: "800",
+    textTransform: "uppercase"
+  },
+  paymentStatusTextPaid: {
+    color: "#0f766e"
   },
   paymentAmount: {
     color: "#0f766e",
     fontSize: 14,
     fontWeight: "900",
+    minWidth: 82,
+    textAlign: "right",
     flexShrink: 0
+  },
+  paidCheckbox: {
+    width: 28,
+    height: 28,
+    borderRadius: 6,
+    borderWidth: 2,
+    borderColor: "#94a3b8",
+    backgroundColor: "#ffffff",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0
+  },
+  paidCheckboxChecked: {
+    borderColor: "#0f766e",
+    backgroundColor: "#0f766e"
+  },
+  paidCheckboxDisabled: {
+    borderColor: "#cbd5e1",
+    backgroundColor: "#f8fafc"
+  },
+  paidCheckboxMark: {
+    width: 7,
+    height: 13,
+    borderRightWidth: 2,
+    borderBottomWidth: 2,
+    borderColor: "#ffffff",
+    marginTop: -2,
+    transform: [{ rotate: "45deg" }]
   },
   emptyState: {
     minHeight: 58,
