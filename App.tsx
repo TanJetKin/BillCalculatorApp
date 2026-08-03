@@ -5,7 +5,9 @@ import {
   Alert,
   Animated,
   BackHandler,
+  Image,
   KeyboardAvoidingView,
+  Modal,
   Platform,
   Pressable,
   SafeAreaView,
@@ -51,6 +53,7 @@ type AddOnRow = {
 
 type BillState = {
   billName?: string;
+  receiptImage?: string;
   people: Person[];
   evenSplits: AmountRow[];
   specificSplits: SpecificSplitRow[];
@@ -105,6 +108,8 @@ type PersonGroup = {
 
 const currencyLabel = "RM";
 const maxCellWidth = 112;
+const receiptImageMaxDimension = 1400;
+const receiptImageQuality = 0.76;
 const historyStorageKey = "bill-calculator-history-v1";
 const groupsStorageKey = "bill-calculator-groups-v1";
 
@@ -366,6 +371,7 @@ const createNewBill = (names: string[] = [], billName = ""): BillState => {
 
   return {
     billName: billName.trim(),
+    receiptImage: "",
     people,
     evenSplits: [],
     specificSplits: [],
@@ -509,6 +515,7 @@ const cloneBill = (bill: BillState) =>
 const hasText = (value: string | undefined) => Boolean(value?.trim());
 
 const hasBillContent = (bill: BillState) =>
+  hasText(bill.receiptImage) ||
   bill.people.some((person) => hasText(person.personal)) ||
   bill.evenSplits.some((row) => hasText(row.total)) ||
   bill.specificSplits.some(
@@ -773,6 +780,82 @@ const registerPwaServiceWorker = () => {
     .catch(() => undefined);
 };
 
+const resizeReceiptImageFile = (file: File) =>
+  new Promise<string>((resolve, reject) => {
+    if (typeof document === "undefined") {
+      reject(new Error("Receipt photos need a browser document."));
+      return;
+    }
+
+    const image = document.createElement("img");
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      const sourceWidth = image.naturalWidth || image.width;
+      const sourceHeight = image.naturalHeight || image.height;
+      const scale = Math.min(
+        1,
+        receiptImageMaxDimension / Math.max(sourceWidth, sourceHeight)
+      );
+      const targetWidth = Math.max(1, Math.round(sourceWidth * scale));
+      const targetHeight = Math.max(1, Math.round(sourceHeight * scale));
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+
+      URL.revokeObjectURL(objectUrl);
+
+      if (!context) {
+        reject(new Error("Could not prepare receipt image."));
+        return;
+      }
+
+      canvas.width = targetWidth;
+      canvas.height = targetHeight;
+      context.drawImage(image, 0, 0, targetWidth, targetHeight);
+      resolve(canvas.toDataURL("image/jpeg", receiptImageQuality));
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Could not read receipt image."));
+    };
+
+    image.src = objectUrl;
+  });
+
+const pickReceiptImageFromWeb = () =>
+  new Promise<string | null>((resolve, reject) => {
+    if (typeof document === "undefined" || !document.body) {
+      resolve(null);
+      return;
+    }
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.setAttribute("capture", "environment");
+    input.style.display = "none";
+
+    const cleanup = () => {
+      input.remove();
+    };
+
+    input.onchange = () => {
+      const file = input.files?.[0];
+      cleanup();
+
+      if (!file) {
+        resolve(null);
+        return;
+      }
+
+      resizeReceiptImageFile(file).then(resolve).catch(reject);
+    };
+
+    document.body.appendChild(input);
+    input.click();
+  });
+
 export default function App() {
   const { width: screenWidth } = useWindowDimensions();
   const [screen, setScreen] = useState<AppScreen>("home");
@@ -787,6 +870,7 @@ export default function App() {
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
   const [settlementText, setSettlementText] = useState("");
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
+  const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
   const activeHistoryIdRef = useRef<string | null>(null);
   const skipNextHistoryPressRef = useRef(false);
   const peopleScrollRef = useRef<ScrollView>(null);
@@ -915,6 +999,12 @@ export default function App() {
   useEffect(() => {
     activeHistoryIdRef.current = activeHistoryId;
   }, [activeHistoryId]);
+
+  useEffect(() => {
+    if (!bill.receiptImage) {
+      setReceiptPreviewOpen(false);
+    }
+  }, [bill.receiptImage]);
 
   useEffect(() => {
     const previousPeopleCount = previousPeopleCountRef.current;
@@ -1170,6 +1260,31 @@ export default function App() {
     }
 
     setSettlementText(calculateLeastTransfer(entries));
+  };
+
+  const chooseReceiptImage = async () => {
+    if (Platform.OS !== "web") {
+      Alert.alert(
+        "Receipt photo",
+        "Receipt photo capture is available in the hosted web app."
+      );
+      return;
+    }
+
+    try {
+      const receiptImage = await pickReceiptImageFromWeb();
+      if (!receiptImage) {
+        return;
+      }
+
+      setBill((current) => ({ ...current, receiptImage }));
+    } catch {
+      Alert.alert("Receipt photo", "Could not attach that receipt image.");
+    }
+  };
+
+  const removeReceiptImage = () => {
+    setBill((current) => ({ ...current, receiptImage: "" }));
   };
 
   const addGroup = () => {
@@ -1810,6 +1925,55 @@ export default function App() {
               </View>
             </View>
 
+            <Section title="Receipt photo">
+              {bill.receiptImage ? (
+                <>
+                  <Pressable
+                    accessibilityLabel="Open receipt photo"
+                    onPress={() => setReceiptPreviewOpen(true)}
+                    style={styles.receiptPhotoBanner}
+                  >
+                    <Image
+                      source={{ uri: bill.receiptImage }}
+                      style={styles.receiptPhotoImage}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.receiptPhotoOverlay}>
+                      <Text style={styles.receiptPhotoOverlayText}>
+                        Tap to view receipt
+                      </Text>
+                    </View>
+                  </Pressable>
+                  <View style={styles.actionRow}>
+                    <Pressable
+                      onPress={chooseReceiptImage}
+                      style={styles.outlineButton}
+                    >
+                      <Text style={styles.outlineButtonText}>Replace photo</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={removeReceiptImage}
+                      style={styles.dangerButton}
+                    >
+                      <Text style={styles.dangerButtonText}>Remove photo</Text>
+                    </Pressable>
+                  </View>
+                </>
+              ) : (
+                <Pressable
+                  onPress={chooseReceiptImage}
+                  style={styles.receiptPhotoEmpty}
+                >
+                  <Text style={styles.receiptPhotoEmptyTitle}>
+                    Add receipt photo
+                  </Text>
+                  <Text style={styles.receiptPhotoEmptyText}>
+                    Take or choose a photo to save with this bill.
+                  </Text>
+                </Pressable>
+              )}
+            </Section>
+
             <Section title="Bill name">
               <TextInput
                 value={bill.billName ?? ""}
@@ -2326,6 +2490,29 @@ export default function App() {
           </ScrollView>
         </Animated.View>
       </KeyboardAvoidingView>
+      <Modal
+        visible={Boolean(bill.receiptImage) && receiptPreviewOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setReceiptPreviewOpen(false)}
+      >
+        <View style={styles.receiptPhotoModalBackdrop}>
+          <Pressable
+            accessibilityLabel="Close receipt photo"
+            onPress={() => setReceiptPreviewOpen(false)}
+            style={styles.receiptPhotoModalClose}
+          >
+            <Text style={styles.receiptPhotoModalCloseText}>Close</Text>
+          </Pressable>
+          {bill.receiptImage ? (
+            <Image
+              source={{ uri: bill.receiptImage }}
+              style={styles.receiptPhotoModalImage}
+              resizeMode="contain"
+            />
+          ) : null}
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -2874,6 +3061,85 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 20,
     lineHeight: 25,
+    fontWeight: "900"
+  },
+  receiptPhotoEmpty: {
+    minHeight: 92,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: "#99f6e4",
+    backgroundColor: "#f0fdfa",
+    padding: 12,
+    justifyContent: "center",
+    gap: 6
+  },
+  receiptPhotoEmptyTitle: {
+    color: "#0f766e",
+    fontSize: 16,
+    lineHeight: 21,
+    fontWeight: "900"
+  },
+  receiptPhotoEmptyText: {
+    color: "#475569",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "700"
+  },
+  receiptPhotoBanner: {
+    minHeight: 112,
+    maxHeight: 150,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#d9e2ec",
+    backgroundColor: "#f8fafc",
+    overflow: "hidden"
+  },
+  receiptPhotoImage: {
+    width: "100%",
+    height: 132
+  },
+  receiptPhotoOverlay: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    bottom: 0,
+    minHeight: 34,
+    justifyContent: "center",
+    paddingHorizontal: 10,
+    backgroundColor: "rgba(15, 23, 42, 0.72)"
+  },
+  receiptPhotoOverlayText: {
+    color: "#ffffff",
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "900"
+  },
+  receiptPhotoModalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(15, 23, 42, 0.94)",
+    padding: 16,
+    justifyContent: "center"
+  },
+  receiptPhotoModalImage: {
+    width: "100%",
+    height: "82%"
+  },
+  receiptPhotoModalClose: {
+    position: "absolute",
+    top: 18,
+    right: 16,
+    zIndex: 2,
+    minHeight: 42,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#ffffff"
+  },
+  receiptPhotoModalCloseText: {
+    color: "#0f172a",
+    fontSize: 14,
     fontWeight: "900"
   },
   personList: {
