@@ -1235,15 +1235,21 @@ export default function App() {
 
       clearHistorySelection();
     };
+    const deleteMessage =
+      selectedHistoryIds.length === 1
+        ? "Remove this saved receipt?"
+        : `Remove ${selectedHistoryIds.length} saved receipts?`;
 
     if (Platform.OS === "web") {
-      doDelete();
+      if (window.confirm(deleteMessage)) {
+        doDelete();
+      }
       return;
     }
 
     Alert.alert(
-      "Delete selected",
-      `Remove ${selectedHistoryIds.length} saved bills?`,
+      "Delete receipt",
+      deleteMessage,
       [
         { text: "Cancel", style: "cancel" },
         { text: "Delete", style: "destructive", onPress: doDelete }
@@ -1285,6 +1291,28 @@ export default function App() {
 
   const removeReceiptImage = () => {
     setBill((current) => ({ ...current, receiptImage: "" }));
+  };
+
+  const confirmRemoveReceiptImage = () => {
+    if (!bill.receiptImage) {
+      return;
+    }
+
+    if (Platform.OS === "web") {
+      if (window.confirm("Remove this receipt photo from the bill?")) {
+        removeReceiptImage();
+      }
+      return;
+    }
+
+    Alert.alert(
+      "Remove receipt photo",
+      "Remove this receipt photo from the bill?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Remove", style: "destructive", onPress: removeReceiptImage }
+      ]
+    );
   };
 
   const addGroup = () => {
@@ -1952,7 +1980,7 @@ export default function App() {
                       <Text style={styles.outlineButtonText}>Replace photo</Text>
                     </Pressable>
                     <Pressable
-                      onPress={removeReceiptImage}
+                      onPress={confirmRemoveReceiptImage}
                       style={styles.dangerButton}
                     >
                       <Text style={styles.dangerButtonText}>Remove photo</Text>
