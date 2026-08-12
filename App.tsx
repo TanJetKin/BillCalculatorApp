@@ -823,7 +823,9 @@ const resizeReceiptImageFile = (file: File) =>
     image.src = objectUrl;
   });
 
-const pickReceiptImageFromWeb = () =>
+type ReceiptImageSource = "camera" | "upload";
+
+const pickReceiptImageFromWeb = (source: ReceiptImageSource) =>
   new Promise<string | null>((resolve, reject) => {
     if (typeof document === "undefined" || !document.body) {
       resolve(null);
@@ -833,7 +835,9 @@ const pickReceiptImageFromWeb = () =>
     const input = document.createElement("input");
     input.type = "file";
     input.accept = "image/*";
-    input.setAttribute("capture", "environment");
+    if (source === "camera") {
+      input.setAttribute("capture", "environment");
+    }
     input.style.display = "none";
 
     const cleanup = () => {
@@ -871,11 +875,14 @@ export default function App() {
   const [settlementText, setSettlementText] = useState("");
   const [activeHistoryId, setActiveHistoryId] = useState<string | null>(null);
   const [receiptPreviewOpen, setReceiptPreviewOpen] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
   const activeHistoryIdRef = useRef<string | null>(null);
   const skipNextHistoryPressRef = useRef(false);
   const peopleScrollRef = useRef<ScrollView>(null);
   const previousPeopleCountRef = useRef(bill.people.length);
   const transitionX = useRef(new Animated.Value(0)).current;
+  const toastOpacity = useRef(new Animated.Value(0)).current;
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const responsiveCellWidth = responsiveCellWidthFor(screenWidth);
   const responsivePersonEditorWidth = responsivePersonEditorWidthFor(screenWidth);
   const totals = useMemo(() => computeTotals(bill), [bill]);
@@ -929,6 +936,15 @@ export default function App() {
   useEffect(() => {
     registerPwaServiceWorker();
   }, []);
+
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current) {
+        clearTimeout(toastTimerRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     let mounted = true;
@@ -1180,10 +1196,47 @@ export default function App() {
     return () => subscription.remove();
   }, [bill, historyLoaded, screen, selectedHistoryIds.length, settlementText]);
 
+  const showToast = (message: string) => {
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current);
+      toastTimerRef.current = null;
+    }
+
+    toastOpacity.stopAnimation();
+    setToastMessage(message);
+    toastOpacity.setValue(0);
+    Animated.timing(toastOpacity, {
+      toValue: 1,
+      duration: 160,
+      useNativeDriver: true
+    }).start(() => {
+      toastTimerRef.current = setTimeout(() => {
+        Animated.timing(toastOpacity, {
+          toValue: 0,
+          duration: 420,
+          useNativeDriver: true
+        }).start(() => {
+          setToastMessage("");
+          toastTimerRef.current = null;
+        });
+      }, 1300);
+    });
+  };
+
+  const renderToast = () =>
+    toastMessage ? (
+      <Animated.View
+        pointerEvents="none"
+        style={[styles.toast, { opacity: toastOpacity }]}
+      >
+        <Text style={styles.toastText}>{toastMessage}</Text>
+      </Animated.View>
+    ) : null;
+
   const copyText = async (text: string) => {
     try {
       await Clipboard.setStringAsync(text);
-      Alert.alert("Copied", "Summary copied as text.");
+      showToast("Copied to clipboard");
     } catch {
       Alert.alert("Copy failed", "Select the summary text and copy it manually.");
     }
@@ -1268,7 +1321,7 @@ export default function App() {
     setSettlementText(calculateLeastTransfer(entries));
   };
 
-  const chooseReceiptImage = async () => {
+  const chooseReceiptImage = async (source: ReceiptImageSource) => {
     if (Platform.OS !== "web") {
       Alert.alert(
         "Receipt photo",
@@ -1278,7 +1331,7 @@ export default function App() {
     }
 
     try {
-      const receiptImage = await pickReceiptImageFromWeb();
+      const receiptImage = await pickReceiptImageFromWeb(source);
       if (!receiptImage) {
         return;
       }
@@ -1767,6 +1820,7 @@ export default function App() {
             </Section>
           </ScrollView>
         </Animated.View>
+        {renderToast()}
       </SafeAreaView>
     );
   }
@@ -1833,6 +1887,7 @@ export default function App() {
             </Section>
           </ScrollView>
         </Animated.View>
+        {renderToast()}
       </SafeAreaView>
     );
   }
@@ -1922,6 +1977,7 @@ export default function App() {
             </Section>
           </ScrollView>
         </Animated.View>
+        {renderToast()}
       </SafeAreaView>
     );
   }
@@ -1974,10 +2030,16 @@ export default function App() {
                   </Pressable>
                   <View style={styles.actionRow}>
                     <Pressable
-                      onPress={chooseReceiptImage}
+                      onPress={() => chooseReceiptImage("camera")}
                       style={styles.outlineButton}
                     >
-                      <Text style={styles.outlineButtonText}>Replace photo</Text>
+                      <Text style={styles.outlineButtonText}>Take photo</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => chooseReceiptImage("upload")}
+                      style={styles.outlineButton}
+                    >
+                      <Text style={styles.outlineButtonText}>Upload photo</Text>
                     </Pressable>
                     <Pressable
                       onPress={confirmRemoveReceiptImage}
@@ -1988,17 +2050,30 @@ export default function App() {
                   </View>
                 </>
               ) : (
-                <Pressable
-                  onPress={chooseReceiptImage}
-                  style={styles.receiptPhotoEmpty}
-                >
-                  <Text style={styles.receiptPhotoEmptyTitle}>
-                    Add receipt photo
-                  </Text>
-                  <Text style={styles.receiptPhotoEmptyText}>
-                    Take or choose a photo to save with this bill.
-                  </Text>
-                </Pressable>
+                <>
+                  <View style={styles.receiptPhotoEmpty}>
+                    <Text style={styles.receiptPhotoEmptyTitle}>
+                      Add receipt photo
+                    </Text>
+                    <Text style={styles.receiptPhotoEmptyText}>
+                      Take or upload a photo to save with this bill.
+                    </Text>
+                  </View>
+                  <View style={styles.actionRow}>
+                    <Pressable
+                      onPress={() => chooseReceiptImage("camera")}
+                      style={styles.outlineButton}
+                    >
+                      <Text style={styles.outlineButtonText}>Take photo</Text>
+                    </Pressable>
+                    <Pressable
+                      onPress={() => chooseReceiptImage("upload")}
+                      style={styles.outlineButton}
+                    >
+                      <Text style={styles.outlineButtonText}>Upload photo</Text>
+                    </Pressable>
+                  </View>
+                </>
               )}
             </Section>
 
@@ -2541,6 +2616,7 @@ export default function App() {
           ) : null}
         </View>
       </Modal>
+      {renderToast()}
     </SafeAreaView>
   );
 }
@@ -2809,6 +2885,28 @@ const styles = StyleSheet.create({
   screenShell: {
     flex: 1,
     width: "100%"
+  },
+  toast: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    bottom: 28,
+    zIndex: 20,
+    elevation: 8,
+    alignItems: "center"
+  },
+  toastText: {
+    maxWidth: 320,
+    borderRadius: 8,
+    overflow: "hidden",
+    backgroundColor: "#0f172a",
+    color: "#ffffff",
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    textAlign: "center",
+    fontSize: 14,
+    lineHeight: 19,
+    fontWeight: "900"
   },
   content: {
     flexGrow: 1,
